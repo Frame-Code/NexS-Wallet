@@ -10,17 +10,17 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@wallet-aethel/shared-types": "*",
-    "next": "^15.0.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "firebase": "^11.0.0",
     "@solana/web3.js": "^1.98.0",
-    "bitcoinjs-lib": "^6.1.0",
-    "ethers": "^6.13.0",
+    "@wallet-aethel/shared-types": "*",
     "@walletconnect/web3wallet": "^1.13.0",
     "bip39": "^3.1.0",
-    "ed25519-hd-key": "^1.3.0"
+    "bitcoinjs-lib": "^6.1.0",
+    "ed25519-hd-key": "^1.3.0",
+    "ethers": "^6.13.0",
+    "firebase": "^11.10.0",
+    "next": "^15.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
