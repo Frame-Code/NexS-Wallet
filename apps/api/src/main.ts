@@ -14,8 +14,8 @@ async function bootstrap() {
   //Helmet agrega varios header de seguridad a las responses http
   app.use(helmet({
     contentSecurityPolicy: enableContentSecurity,
-     hsts: { //Configura Strict-transport-security -> que automaticamente sse utilize https
-      maxAge: 31_536_000, // 1 año en segundos
+     hsts: { 
+      maxAge: 31_536_000, 
       includeSubDomains: true,
     },
   }));
