@@ -4,22 +4,26 @@ import { Firestore, Timestamp } from 'firebase-admin/firestore';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateSettingsDto } from './dto/update-settings.dto';
 
-const CAMPOS_PROHIBIDOS = ['privateKey', 'mnemonic', 'seed', 'pin', 'seedPhrase'];
-
-function validarSinCamposSensibles(data: Record<string, any>) {
-  for (const campo of CAMPOS_PROHIBIDOS) {
-    if (campo in data) {
-      throw new ConflictException(`Campo no permitido en Firestore: ${campo}`);
-    }
-  }
-}
-
 @Injectable()
 export class UsersService {
   constructor(@Inject(FIREBASE_DB) private readonly db: Firestore) {}
 
+  private async obtenerCamposProhibidos(): Promise<string[]> {
+    const snapshot = await this.db.collection('camposProhibidos').get();
+    return snapshot.docs.map((doc) => doc.id);
+  }
+
+  private async validarSinCamposSensibles(data: Record<string, any>) {
+    const prohibidos = await this.obtenerCamposProhibidos();
+    for (const campo of prohibidos) {
+      if (campo in data) {
+        throw new ConflictException(`Campo no permitido en Firestore: ${campo}`);
+      }
+    }
+  }
+
   async create(dto: CreateUserDto) {
-    validarSinCamposSensibles(dto as any);
+    await this.validarSinCamposSensibles(dto as any);
 
     const ref = this.db.collection('users').doc(dto.uid);
     const existing = await ref.get();
@@ -56,7 +60,7 @@ export class UsersService {
   }
 
   async updateSettings(uid: string, dto: UpdateSettingsDto) {
-    validarSinCamposSensibles(dto as any);
+    await this.validarSinCamposSensibles(dto as any);
     const ref = this.db
       .collection('users').doc(uid)
       .collection('settings').doc('preferences');
