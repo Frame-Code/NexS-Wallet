@@ -3,6 +3,8 @@
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { signOut } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
 
 const NAV_ITEMS = [
     {
@@ -88,9 +90,18 @@ export default function Sidebar() {
             {/* Footer */}
             <div className="px-4 py-4 border-t border-surface-border space-y-3">
                 <button
-                    onClick={() => {
-                        //TODO - Implementacion de logout por parte de Rusell
-                        router.push('/login')
+                    onClick={async () => {
+                        try {
+                            await signOut(auth);
+                        } catch (err) {
+                            console.error('Error signing out of Firebase:', err);
+                        } finally {
+                            localStorage.removeItem('access_token');
+                            localStorage.removeItem('refresh_token');
+                            sessionStorage.removeItem('user_pin');
+                            sessionStorage.removeItem('biometric_auth');
+                            router.push('/login');
+                        }
                     }}
                     className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-red-400 hover:bg-red-500/10 transition-colors"
                 >

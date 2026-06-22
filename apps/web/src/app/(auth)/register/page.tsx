@@ -2,8 +2,15 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
+import { storeMnemonic } from '@/lib/crypto/vault';
+import { generateMnemonic } from '@/lib/crypto/keygen';
+import { registerBiometric } from '@/lib/auth/webauthn';
 
 export default function RegisterPage() {
+  const router = useRouter();
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -17,6 +24,12 @@ export default function RegisterPage() {
     setLoading(true);
     setError('');
 
+    if (pin.length !== 6 || !/^\d+$/.test(pin)) {
+      setError('El PIN debe ser de exactamente 6 dígitos numéricos');
+      setLoading(false);
+      return;
+    }
+
     if (pin !== confirmPin) {
       setError('Los PINs no coinciden');
       setLoading(false);
@@ -24,9 +37,56 @@ export default function RegisterPage() {
     }
 
     try {
-      // TODO: lógica de registro con Firebase - a cargo de Russell
-    } catch {
-      setError('Error al crear la cuenta');
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/v1';
+      const registerRes = await fetch(`${apiUrl}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, email, password }),
+      });
+
+      if (!registerRes.ok) {
+        const errData = await registerRes.json();
+        throw new Error(errData.message || 'Error al crear la cuenta en el servidor');
+      }
+
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const idToken = await userCredential.user.getIdToken();
+
+      const loginRes = await fetch(`${apiUrl}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken }),
+      });
+
+      if (!loginRes.ok) {
+        const errData = await loginRes.json();
+        throw new Error(errData.message || 'Error al iniciar sesión en el servidor');
+      }
+
+      const { access_token, refresh_token, uid } = await loginRes.json();
+
+      localStorage.setItem('access_token', access_token);
+      if (refresh_token) {
+        localStorage.setItem('refresh_token', refresh_token);
+      }
+
+      sessionStorage.setItem('user_pin', pin);
+
+      const mnemonic = generateMnemonic();
+      await storeMnemonic(mnemonic, pin);
+
+      const bioResponse = await registerBiometric(uid, email);
+      if (!bioResponse.success) {
+        setError('no se pudo obtener biométrico');
+        setTimeout(() => {
+          router.push('/dashboard');
+        }, 2000);
+        return;
+      }
+
+      router.push('/dashboard');
+    } catch (err: any) {
+      setError(err.message || 'Error al crear la cuenta. Verifica tus datos.');
     } finally {
       setLoading(false);
     }

@@ -1,0 +1,72 @@
+rules_version = '2';
+
+// =========================================================================
+// Reglas de Seguridad — Wallet Aethel
+// Autor: Sebastian Lascano Bastidas — Módulo 4.7 (Firebase/Firestore)
+//
+// NOTA: combina la colección wallets/{userId} ya iniciada por el equipo
+// con las protecciones de seguridad acordadas. PENDIENTE de confirmar
+// con el equipo si addresses queda embebido en users/ o separado aquí.
+// =========================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    // Bloquea cualquier intento de escribir campos que muevan fondos
+    function noSensitiveFields(data) {
+      return !('privateKey' in data)
+          && !('mnemonic'   in data)
+          && !('seed'       in data)
+          && !('pin'        in data)
+          && !('seedPhrase' in data);
+    }
+
+    match /users/{userId} {
+      allow read:   if isOwner(userId);
+      allow create: if isOwner(userId) && noSensitiveFields(request.resource.data);
+      allow update: if isOwner(userId) && noSensitiveFields(request.resource.data);
+      allow delete: if false;
+
+      match /settings/{settingId} {
+        allow read, write: if isOwner(userId);
+      }
+      match /sessions/{deviceId} {
+        allow read:  if isOwner(userId);
+        allow write: if false;
+      }
+      match /tokensFavoritos/{tokenId} {
+        allow read, write: if isOwner(userId);
+      }
+      match /transaccionesCache/{txHash} {
+        allow read:  if isOwner(userId);
+        allow write: if false;
+      }
+    }
+
+    match /wallets/{userId} {
+      allow read:  if isOwner(userId);
+      allow write: if isOwner(userId) && noSensitiveFields(request.resource.data);
+    }
+
+    match /refreshTokens/{userId} {
+      allow read, write: if false;
+    }
+
+    match /fcmTokens/{userId} {
+      allow read:  if isOwner(userId);
+      allow write: if false;
+    }
+
+    match /camposProhibidos/{campoId} {
+      allow read, write: if false;
+    }
+    
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
