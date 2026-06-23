@@ -255,7 +255,7 @@ export default function LoginPage() {
 
 
   return (
-    <div className="bg-gray-900 rounded-2xl p-8 border border-gray-800 max-w-md w-full mx-auto">
+    <div className="bg-gray-900 rounded-2xl p-6 sm:p-8 border border-gray-800 w-full">
       <h2 className="text-xl font-semibold text-white mb-6">
         {loginMode === 'biometric' && 'Bienvenido de nuevo'}
         {loginMode === 'google_pin' && (googleAuthData?.needsNewPin ? 'Configurar PIN' : 'Desbloquear Wallet')}

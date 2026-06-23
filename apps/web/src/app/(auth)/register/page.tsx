@@ -93,7 +93,7 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="bg-gray-900 rounded-2xl p-8 border border-gray-800">
+    <div className="bg-gray-900 rounded-2xl p-6 sm:p-8 border border-gray-800 w-full">
       <h2 className="text-xl font-semibold text-white mb-6">Crear cuenta</h2>
 
       {error && (
