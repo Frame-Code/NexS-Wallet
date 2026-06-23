@@ -116,10 +116,8 @@ export class TransactionsService {
     return await strategy.broadcast(rawTx);
   }
 
-  async getHistory(chain: string, address: string) {
+  async getTransactionHistory(chain: string, address: string) {
     const strategy = this.strategies[chain];
     if (!strategy) throw new BadRequestException(`La red ${chain} no está soportada.`);
-    
-    return await strategy.getHistory(address);
   }
 }

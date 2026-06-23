@@ -16,8 +16,14 @@ export class TransactionsController {
     );
   }
 
-  @Get(':address')
-  async getTransactionHistory(@Param('address') address: string) {
-    
+  @Get(':chain/:address')
+  async getTransactionHistory(
+    @Param('chain') chain: string,
+    @Param('address') address: string,
+  ) {
+    return await this.transactionsService.getTransactionHistory(
+      chain as 'solana' | 'bnb' | 'bitcoin',
+      address
+    );
   }
 }
