@@ -26,7 +26,7 @@ export default function UnlockPage() {
     };
 
     return (
-        <div className="bg-gray-900 rounded-2xl p-8 border border-gray-800">
+        <div className="bg-gray-900 rounded-2xl p-6 sm:p-8 border border-gray-800 w-full">
             <div className="text-center mb-6">
                 <h2 className="text-xl font-semibold text-white">Desbloquear Wallet</h2>
                 <p className="text-gray-400 text-sm mt-1">Ingresa tu PIN de seguridad para continuar</p>

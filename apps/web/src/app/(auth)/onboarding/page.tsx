@@ -40,7 +40,7 @@ export default function OnboardingPage() {
     };
 
     return (
-        <div className="bg-gray-900 rounded-2xl p-8 border border-gray-800">
+        <div className="bg-gray-900 rounded-2xl p-6 sm:p-8 border border-gray-800 w-full">
 
             {/* PASO 1 — Bienvenida */}
             {step === 'welcome' && (
@@ -78,7 +78,7 @@ export default function OnboardingPage() {
                         <p className="text-gray-400 text-sm mt-1">Anota estas 12 palabras en orden. No la compartas con nadie.</p>
                     </div>
 
-                    <div className="bg-gray-800 rounded-xl p-4 grid grid-cols-3 gap-2">
+                    <div className="bg-gray-800 rounded-xl p-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
                         {MOCK_SEED.map((word, i) => (
                             <div key={i} className="bg-gray-700 rounded-lg px-3 py-2 text-sm text-white flex gap-2">
                                 <span className="text-gray-500 text-xs">{i + 1}.</span>
@@ -135,7 +135,7 @@ export default function OnboardingPage() {
                         <p className="text-gray-400 text-sm mt-1">Ingresa tus 12 palabras en orden.</p>
                     </div>
 
-                    <div className="bg-gray-800 rounded-xl p-4 grid grid-cols-3 gap-2">
+                    <div className="bg-gray-800 rounded-xl p-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
                         {Array.from({ length: 12 }, (_, i) => (
                             <div key={i} className="flex items-center gap-2 bg-gray-700 rounded-lg px-2 py-2">
                                 <span className="text-gray-500 text-xs w-4 shrink-0">{i + 1}.</span>

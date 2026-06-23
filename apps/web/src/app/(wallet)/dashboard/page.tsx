@@ -34,7 +34,7 @@ export default function DashboardPage() {
             {/* Header */}
             <div className="flex items-center justify-between">
                 <h1 className="text-2xl font-bold text-white">Wallet Dashboard</h1>
-                <div className="flex items-center gap-4 text-sm text-slate-400">
+                <div className="hidden sm:flex items-center gap-4 text-sm text-slate-400">
                     <button className="hover:text-white transition-colors">Cuentas</button>
                     <button className="hover:text-white transition-colors">Tarjetas</button>
                     <button className="hover:text-white transition-colors">Analytics</button>
@@ -43,7 +43,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Row 1 */}
-            <div className="grid grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
                 {/* Total Balance */}
                 <div className="bg-gradient-to-br from-blue-900/60 to-blue-800/30 rounded-2xl p-6 border border-blue-700/30">
@@ -70,7 +70,7 @@ export default function DashboardPage() {
                 </div>
 
                 {/* Monthly Overview */}
-                <div className="col-span-2 bg-slate-800/50 rounded-2xl p-6 border border-slate-700/50">
+                <div className="lg:col-span-2 bg-slate-800/50 rounded-2xl p-6 border border-slate-700/50">
                     <div className="flex items-center justify-between mb-4">
                         <p className="text-white font-semibold">Monthly Overview</p>
                         <div className="flex items-center gap-4 text-xs text-slate-400">
@@ -94,7 +94,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Row 2 */}
-            <div className="grid grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
                 {/* Spending Breakdown */}
                 <div className="bg-slate-800/50 rounded-2xl p-6 border border-slate-700/50">
