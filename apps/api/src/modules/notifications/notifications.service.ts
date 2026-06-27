@@ -48,4 +48,12 @@ export class NotificationsService {
       this.logger.error(`Error enviando notificacion a ${uid}: ${err.message}`);
     }
   }
+
+  async registerToken(uid: string, token: string) {
+  await this.db.collection('fcmTokens').doc(uid).set(
+    { token, actualizadoEn: new Date() },
+    { merge: true },
+  );
+  return { mensaje: 'Token registrado correctamente' };
+  }
 }
