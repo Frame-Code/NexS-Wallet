@@ -6,28 +6,28 @@ import { useRouter } from 'next/navigation';
 import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import { hasVault, storeMnemonic, loadMnemonic } from '@/lib/crypto/vault';
-import { generateMnemonic } from '@/lib/crypto/keygen';
+import { generateMnemonic, deriveAddresses } from '@/lib/crypto/keygen';
 import { registerBiometric, verifyBiometric } from '@/lib/auth/webauthn';
 import { isBiometricAvailable } from '@/lib/auth/webauthn.utils';
+import { useWallet } from '@/contexts/WalletContext';
 
-
-interface GoogleAuthData {
-  idToken: string;
-  email: string;
-  uid: string;
-  needsNewPin: boolean;
-}
+type LoginMode = 'standard' | 'biometric' | 'google_seed' | 'google_pin';
 
 export default function LoginPage() {
   const router = useRouter();
+  const { unlockWallet } = useWallet();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [pin, setPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
-  
-  const [loginMode, setLoginMode] = useState<'standard' | 'biometric' | 'google_pin'>('standard');
-  const [googleAuthData, setGoogleAuthData] = useState<GoogleAuthData | null>(null);
-  
+  const [mnemonic, setMnemonic] = useState('');
+  const [confirmed, setConfirmed] = useState(false);
+
+  const [loginMode, setLoginMode] = useState<LoginMode>('standard');
+  const [googleUid, setGoogleUid] = useState('');
+  const [googleEmail, setGoogleEmail] = useState('');
+  const [isNewGoogleUser, setIsNewGoogleUser] = useState(false);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [infoMessage, setInfoMessage] = useState('');
@@ -37,6 +37,9 @@ export default function LoginPage() {
     const hasBiometric = localStorage.getItem('biometric_cred_id');
     if (hasToken && hasBiometric) {
       setLoginMode('biometric');
+      setTimeout(() => {
+        handleBiometricLogin();
+      }, 100);
     }
   }, []);
 
@@ -117,11 +120,28 @@ export default function LoginPage() {
         localStorage.setItem('refresh_token', refresh_token);
       }
 
-      sessionStorage.setItem('user_pin', pin);
+
 
       const vaultExists = await hasVault();
       if (vaultExists) {
-        await loadMnemonic(pin);
+        const loadedMnemonic = await loadMnemonic(pin);
+        unlockWallet(loadedMnemonic);
+        
+        try {
+          const bioAvailable = await isBiometricAvailable();
+          const hasCredId = !!localStorage.getItem('biometric_cred_id');
+          if (bioAvailable && hasCredId) {
+            const verified = await verifyBiometric();
+            if (verified) {
+              router.push('/dashboard');
+              return;
+            }
+          }
+          await registerBiometric(uid, email);
+        } catch (e) {
+          console.error(e);
+        }
+        
         router.push('/dashboard');
       } else {
         router.push('/onboarding');
@@ -153,57 +173,11 @@ export default function LoginPage() {
       const idToken = await user.getIdToken();
       const vaultExists = await hasVault();
 
-      const bioAvailable = await isBiometricAvailable();
-      const hasCredId = !!localStorage.getItem('biometric_cred_id');
-
-      if (bioAvailable && hasCredId) {
-        const verified = await verifyBiometric();
-        if (!verified) {
-          throw new Error('Autenticación biométrica requerida para continuar');
-        }
-      }
-
-      setGoogleAuthData({
-        idToken,
-        email: user.email,
-        uid: user.uid,
-        needsNewPin: !vaultExists
-      });
-      setLoginMode('google_pin');
-      setPin('');
-      setConfirmPin('');
-    } catch (err: any) {
-      setError(err.message || 'Error al iniciar sesión con Google');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleGooglePinSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!googleAuthData) return;
-
-    setLoading(true);
-    setError('');
-
-    if (pin.length !== 6 || !/^\d+$/.test(pin)) {
-      setError('El PIN debe ser de exactamente 6 dígitos numéricos');
-      setLoading(false);
-      return;
-    }
-
-    if (googleAuthData.needsNewPin && pin !== confirmPin) {
-      setError('Los PINs ingresados no coinciden');
-      setLoading(false);
-      return;
-    }
-
-    try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/v1';
       const res = await fetch(`${apiUrl}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idToken: googleAuthData.idToken }),
+        body: JSON.stringify({ idToken }),
       });
 
       if (!res.ok) {
@@ -214,39 +188,102 @@ export default function LoginPage() {
       const { access_token, refresh_token, uid } = await res.json();
 
       localStorage.setItem('access_token', access_token);
-      if (refresh_token) {
-        localStorage.setItem('refresh_token', refresh_token);
+      if (refresh_token) localStorage.setItem('refresh_token', refresh_token);
+
+      setGoogleUid(uid);
+      setGoogleEmail(user.email);
+
+      if (!vaultExists) {
+        setIsNewGoogleUser(true);
+        const newMnemonic = generateMnemonic();
+        setMnemonic(newMnemonic);
+        setLoginMode('google_seed');
+      } else {
+        setIsNewGoogleUser(false);
+        const bioAvailable = await isBiometricAvailable();
+        const hasCredId = !!localStorage.getItem('biometric_cred_id');
+
+        if (bioAvailable && hasCredId) {
+          const verified = await verifyBiometric();
+          if (!verified) {
+            throw new Error('Autenticación biométrica requerida para continuar');
+          }
+          setLoginMode('google_pin');
+        } else {
+          setLoginMode('google_pin');
+        }
       }
+    } catch (err: any) {
+      setError(err.message || 'Error al iniciar sesión con Google');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-      sessionStorage.setItem('user_pin', pin);
+  const handleGoogleSeedConfirm = () => {
+    if (!confirmed) {
+      setError('Debes confirmar que anotaste tu frase semilla');
+      return;
+    }
+    setError('');
+    setPin('');
+    setConfirmPin('');
+    setLoginMode('google_pin');
+  };
 
-      if (googleAuthData.needsNewPin) {
-        const mnemonic = generateMnemonic();
+  const handleGooglePinSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+
+    if (pin.length !== 6 || !/^\d+$/.test(pin)) {
+      setError('El PIN debe ser de exactamente 6 dígitos numéricos');
+      setLoading(false);
+      return;
+    }
+
+    if (isNewGoogleUser && pin !== confirmPin) {
+      setError('Los PINs no coinciden');
+      setLoading(false);
+      return;
+    }
+
+    try {
+
+
+      if (isNewGoogleUser) {
         await storeMnemonic(mnemonic, pin);
+        unlockWallet(mnemonic);
+        try {
+          await registerBiometric(googleUid, googleEmail);
 
-        const bioResponse = await registerBiometric(uid, googleAuthData.email);
-        if (!bioResponse.success) {
-          setError('no se pudo obtener biométrico');
-          setTimeout(() => {
-            router.push('/dashboard');
-          }, 2000);
-          return;
+          const addresses = await deriveAddresses(mnemonic);
+          const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/v1';
+          const token = localStorage.getItem('access_token');
+          if (token) {
+            await fetch(`${apiUrl}/wallet/${googleUid}/addresses`, {
+              method: 'PATCH',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify(addresses)
+            }).catch(err => console.error('Error al guardar direcciones:', err));
+          }
+        } catch (e) {
+          console.error(e);
         }
         router.push('/dashboard');
       } else {
-        const vaultExists = await hasVault();
-        if (vaultExists) {
-          await loadMnemonic(pin);
-          router.push('/dashboard');
-        } else {
-          router.push('/onboarding');
-        }
+        const loadedMnemonic = await loadMnemonic(pin);
+        unlockWallet(loadedMnemonic);
+        router.push('/dashboard');
       }
     } catch (err: any) {
       if (err.message && err.message.includes('PIN incorrecto')) {
         setError('PIN incorrecto. Ingresa el PIN configurado en este dispositivo.');
       } else {
-        setError(err.message || 'Error al completar el inicio de sesión con Google');
+        setError(err.message || 'Error al completar el inicio de sesión');
       }
     } finally {
       setLoading(false);
@@ -254,11 +291,15 @@ export default function LoginPage() {
   };
 
 
+
+  const seedWords = mnemonic ? mnemonic.split(' ') : [];
+
   return (
     <div className="bg-gray-900 rounded-2xl p-6 sm:p-8 border border-gray-800 w-full">
       <h2 className="text-xl font-semibold text-white mb-6">
         {loginMode === 'biometric' && 'Bienvenido de nuevo'}
-        {loginMode === 'google_pin' && (googleAuthData?.needsNewPin ? 'Configurar PIN' : 'Desbloquear Wallet')}
+        {loginMode === 'google_seed' && 'Tu frase semilla'}
+        {loginMode === 'google_pin' && (isNewGoogleUser ? 'Crear PIN' : 'Desbloquear Wallet')}
         {loginMode === 'standard' && 'Iniciar sesión'}
       </h2>
 
@@ -310,17 +351,56 @@ export default function LoginPage() {
         </div>
       )}
 
-      {loginMode === 'google_pin' && googleAuthData && (
+      {loginMode === 'google_seed' && (
+        <div className="space-y-6">
+          <p className="text-gray-400 text-sm">Anota estas 12 palabras en orden. No la compartas con nadie.</p>
+
+          <div className="bg-gray-800 rounded-xl p-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {seedWords.map((word, i) => (
+              <div key={i} className="bg-gray-700 rounded-lg px-3 py-2 text-sm text-white flex gap-2">
+                <span className="text-gray-500 text-xs">{i + 1}.</span>
+                <span>{word}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg px-4 py-3">
+            <p className="text-yellow-400 text-xs">⚠️ Guarda esta frase en un lugar seguro. Si la pierdes, no podrás recuperar tu wallet.</p>
+          </div>
+
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={confirmed}
+              onChange={(e) => {
+                setConfirmed(e.target.checked);
+                setError('');
+              }}
+              className="mt-0.5 accent-blue-500"
+            />
+            <span className="text-gray-400 text-sm">He anotado mi frase semilla en un lugar seguro</span>
+          </label>
+
+          <button
+            onClick={handleGoogleSeedConfirm}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg py-3 text-sm transition-colors"
+          >
+            Continuar
+          </button>
+        </div>
+      )}
+
+      {loginMode === 'google_pin' && (
         <form onSubmit={handleGooglePinSubmit} className="space-y-4">
           <p className="text-sm text-gray-400 mb-2">
-            {googleAuthData.needsNewPin 
-              ? 'Por favor, crea un PIN de seguridad de 6 dígitos numéricos para proteger tu monedero.'
-              : 'Ingresa tu PIN de seguridad de 6 dígitos para desbloquear tu monedero.'}
+            {isNewGoogleUser
+              ? 'Crea un PIN de seguridad de 6 dígitos para proteger tu wallet.'
+              : 'Ingresa tu PIN de seguridad para desbloquear tu wallet.'}
           </p>
 
           <div>
             <label className="block text-sm text-gray-400 mb-1">
-              {googleAuthData.needsNewPin ? 'Crea tu PIN (6 dígitos)' : 'PIN de seguridad'}
+              {isNewGoogleUser ? 'Crea tu PIN (6 dígitos)' : 'PIN de seguridad'}
             </label>
             <input
               type="password"
@@ -337,7 +417,7 @@ export default function LoginPage() {
             />
           </div>
 
-          {googleAuthData.needsNewPin && (
+          {isNewGoogleUser && (
             <div>
               <label className="block text-sm text-gray-400 mb-1">Confirmar PIN</label>
               <input
@@ -368,7 +448,6 @@ export default function LoginPage() {
               type="button"
               onClick={() => {
                 setLoginMode('standard');
-                setGoogleAuthData(null);
                 setPin('');
                 setConfirmPin('');
               }}
@@ -378,7 +457,7 @@ export default function LoginPage() {
             </button>
             <button
               type="submit"
-              disabled={loading || pin.length !== 6 || (googleAuthData.needsNewPin && confirmPin !== pin)}
+              disabled={loading || pin.length !== 6 || (isNewGoogleUser && confirmPin !== pin)}
               className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-lg py-3 text-sm transition-colors"
             >
               {loading ? 'Confirmando...' : 'Confirmar'}
@@ -386,6 +465,8 @@ export default function LoginPage() {
           </div>
         </form>
       )}
+
+
 
       {loginMode === 'standard' && (
         <>

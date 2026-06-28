@@ -16,6 +16,7 @@ export interface AuthSuccessResult {
   displayName: string;
   needsVaultSetup?: boolean;
   biometricMessage?: string;
+  mnemonic?: string;
 }
 
 export interface AuthErrorResult {
@@ -64,18 +65,18 @@ export async function signInWithFirebaseEmail(
       localStorage.setItem('refresh_token', refresh_token);
     }
 
-    // Guardar PIN en la sessionStorage
-    sessionStorage.setItem('user_pin', pin);
+
 
     const vaultExists = await hasVault();
 
     if (vaultExists) {
-      await loadMnemonic(pin);
+      const mnemonic = await loadMnemonic(pin);
       return {
         success: true,
         uid,
         email: user.email || email,
         displayName: user.displayName || '',
+        mnemonic,
       };
     }
 
@@ -143,16 +144,16 @@ export async function signInWithFirebaseGoogle(
       localStorage.setItem('refresh_token', refresh_token);
     }
 
-    // Guardar PIN en la sessionStorage
-    sessionStorage.setItem('user_pin', pin);
+
 
     if (vaultExists) {
-      await loadMnemonic(pin);
+      const mnemonic = await loadMnemonic(pin);
       return {
         success: true,
         uid,
         email: user.email,
         displayName: user.displayName || '',
+        mnemonic,
       };
     }
 
@@ -223,8 +224,7 @@ export async function registerWithFirebaseEmail(
       localStorage.setItem('refresh_token', refresh_token);
     }
 
-    // Guardar el PIN en sessionStorage
-    sessionStorage.setItem('user_pin', pin);
+
 
     // 4. Generar y cifrar el mnemonic de 12 palabras usando el PIN
     const mnemonic = generateMnemonic();
@@ -242,7 +242,8 @@ export async function registerWithFirebaseEmail(
       uid,
       email: user.email || email,
       displayName: user.displayName || username,
-      biometricMessage
+      biometricMessage,
+      mnemonic
     };
   } catch (err: any) {
     return { success: false, message: err.message || 'Error al crear la cuenta' };
@@ -262,6 +263,6 @@ export async function logoutFirebase(): Promise<void> {
     // 2. Limpiar almacenamiento local y de sesión
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
-    sessionStorage.removeItem('user_pin');
+
   }
 }

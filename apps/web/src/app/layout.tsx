@@ -6,10 +6,16 @@ export const metadata: Metadata = {
   description: 'Non-custodial multichain wallet',
 };
 
+import { WalletProvider } from '@/contexts/WalletContext';
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es">
-      <body>{children}</body>
+      <body>
+        <WalletProvider>
+          {children}
+        </WalletProvider>
+      </body>
     </html>
   );
 }

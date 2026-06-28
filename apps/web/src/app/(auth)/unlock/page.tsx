@@ -2,12 +2,15 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { loadMnemonic } from '@/lib/crypto/vault';
+import { useWallet } from '@/contexts/WalletContext';
 
 export default function UnlockPage() {
     const [pin, setPin] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const router = useRouter();
+    const { unlockWallet } = useWallet();
 
     const handleUnlock = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -15,7 +18,8 @@ export default function UnlockPage() {
         setError('');
 
         try {
-            // TODO: verificar PIN con vault - a cargo de Russell
+            const mnemonic = await loadMnemonic(pin);
+            unlockWallet(mnemonic);
             router.push('/dashboard');
         } catch {
             setError('PIN incorrecto');

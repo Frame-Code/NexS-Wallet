@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { signOut } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
+import { useWallet } from '@/contexts/WalletContext';
 
 const NAV_ITEMS = [
     {
@@ -58,6 +59,7 @@ const NAV_ITEMS = [
 export default function Sidebar() {
     const pathname = usePathname();
     const router = useRouter();
+    const { lockWallet } = useWallet();
 
     return (
         <aside className="fixed left-0 top-0 h-screen w-60 border-r border-surface-border flex flex-col z-40 bg-slate-900" >
@@ -98,8 +100,8 @@ export default function Sidebar() {
                         } finally {
                             localStorage.removeItem('access_token');
                             localStorage.removeItem('refresh_token');
-                            sessionStorage.removeItem('user_pin');
                             sessionStorage.removeItem('biometric_auth');
+                            if (lockWallet) lockWallet();
                             router.push('/login');
                         }
                     }}

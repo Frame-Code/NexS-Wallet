@@ -1,7 +1,5 @@
+import { redirect } from 'next/navigation';
+
 export default function Home() {
-  return (
-    <main>
-      <h1 className="text-2xl font-bold text-white">NexS Wallet — en construcción</h1>
-    </main>
-  );
+  redirect('/onboarding');
 }
