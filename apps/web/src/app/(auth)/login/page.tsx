@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useNavigate } from '@/hooks/useNavigate';
 import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
-import { auth, solicitarPermisoPush, registrarTokenEnBackend } from '@/lib/firebase';
+import { auth } from '@/lib/firebase';
 import { hasVault, storeMnemonic, loadMnemonic } from '@/lib/crypto/vault';
 import { generateMnemonic, deriveAddresses } from '@/lib/crypto/keygen';
 import { registerBiometric, verifyBiometric } from '@/lib/auth/webauthn';
@@ -18,31 +18,29 @@ export default function LoginPage() {
   const router = useRouter();
   const navigate = useNavigate();
   const { unlockWallet } = useWallet();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [pin, setPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
-
-  const [mnemonic, setMnemonic] = useState('');
   const [confirmed, setConfirmed] = useState(false);
 
   const [loginMode, setLoginMode] = useState<LoginMode>('standard');
   const [googleUid, setGoogleUid] = useState('');
   const [googleEmail, setGoogleEmail] = useState('');
   const [isNewGoogleUser, setIsNewGoogleUser] = useState(false);
+  const [mnemonic, setMnemonic] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [infoMessage, setInfoMessage] = useState('');
 
+  // Auto-trigger biometric si hay token y credencial guardada
   useEffect(() => {
     const hasToken = localStorage.getItem('access_token');
     const hasBiometric = localStorage.getItem('biometric_cred_id');
     if (hasToken && hasBiometric) {
       setLoginMode('biometric');
-      setTimeout(() => {
-        handleBiometricLogin();
-      }, 100);
+      setTimeout(() => handleBiometricLogin(), 100);
     }
   }, []);
 
@@ -105,161 +103,100 @@ export default function LoginPage() {
     }
   };
 
+  // Login con email y contraseña
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
-    setInfoMessage('');
-
-    if (pin.length !== 6 || !/^\d+$/.test(pin)) {
-      setError('El PIN debe ser de exactamente 6 dígitos numéricos');
-      setLoading(false);
-      return;
-    }
 
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-      const idToken = await user.getIdToken();
-
+      const idToken = await userCredential.user.getIdToken();
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/v1';
-      const res = await fetch(`${apiUrl}/auth/login`, {
+
+      const response = await fetch(`${apiUrl}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ idToken }),
       });
 
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.message || 'Error en la autenticación del servidor');
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.message || 'Error al iniciar sesión en el servidor');
       }
 
-
-      const { access_token, refresh_token, uid } = await res.json();
-
+      const { access_token, refresh_token, uid } = await response.json();
       localStorage.setItem('access_token', access_token);
-      if (refresh_token) {
-        localStorage.setItem('refresh_token', refresh_token);
-      } if (uid) {
-        localStorage.setItem('uid', uid);
-      }
+      if (refresh_token) localStorage.setItem('refresh_token', refresh_token);
+      if (uid) localStorage.setItem('uid', uid);
 
-      sessionStorage.setItem('user_pin', pin);
-
-      // Pide permiso de notificaciones push y registra el token en el
-      // backend. No bloqueamos el login si esto falla — las notificaciones
-      // son un complemento, no deben impedir que el usuario entre a la app.
-      solicitarPermisoPush()
-        .then((token) => {
-          if (token) {
-            registrarTokenEnBackend(token, access_token).catch((err) =>
-              console.error('Error registrando token FCM:', err),
-            );
-          }
-        })
-        .catch((err) => console.error('Error solicitando permiso push:', err));
-        
+      // Si tiene vault → ir a unlock para pedir PIN. Si no → onboarding.
       const vaultExists = await hasVault();
       if (vaultExists) {
-        const loadedMnemonic = await loadMnemonic(pin);
-        unlockWallet(loadedMnemonic);
-        
-        try {
-          const bioAvailable = await isBiometricAvailable();
-          const hasCredId = !!localStorage.getItem('biometric_cred_id');
-          if (bioAvailable && hasCredId) {
-            const verified = await verifyBiometric();
-            if (verified) {
-              navigate('/dashboard');
-              return;
-            }
-          }
-          await registerBiometric(uid, email);
-        } catch (e) {
-          console.error(e);
-        }
-        
-        navigate('/dashboard');
+        navigate('/unlock');
       } else {
         navigate('/onboarding');
       }
-
     } catch (err: any) {
-      if (err.message && err.message.includes('PIN incorrecto')) {
-        setError('PIN de seguridad incorrecto. Inténtalo de nuevo.');
-      } else {
-        setError(err.message || 'Email, contraseña o PIN incorrectos');
-      }
+      setError(err.message || 'Email o contraseña incorrectos');
     } finally {
       setLoading(false);
     }
   };
 
+  // Login con Google
   const handleGoogle = async () => {
     setLoading(true);
     setError('');
-    setInfoMessage('');
+
     try {
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
-      const user = result.user;
-
-      if (!user.email) {
-        throw new Error('No se pudo obtener el email del usuario de Google');
-      }
-
-      const idToken = await user.getIdToken();
-
+      const idToken = await result.user.getIdToken();
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/v1';
-      const res = await fetch(`${apiUrl}/auth/login`, {
+
+      const response = await fetch(`${apiUrl}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ idToken }),
       });
 
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.message || 'Error en la autenticación del servidor');
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.message || 'Error al iniciar sesión con Google');
       }
 
-      const { access_token, refresh_token, uid, isNewUser } = await res.json();
-
+      const { access_token, refresh_token, uid, isNewUser } = await response.json();
       localStorage.setItem('access_token', access_token);
-      localStorage.setItem('uid', uid);
       if (refresh_token) localStorage.setItem('refresh_token', refresh_token);
+      if (uid) localStorage.setItem('uid', uid);
 
       setGoogleUid(uid);
-      setGoogleEmail(user.email);
+      setGoogleEmail(result.user.email ?? '');
 
-      // Usar isNewUser del backend (basado en Firestore) 
       if (isNewUser) {
+        // Usuario nuevo: generar seed y mostrarla
         setIsNewGoogleUser(true);
         const newMnemonic = generateMnemonic();
         setMnemonic(newMnemonic);
         setLoginMode('google_seed');
       } else {
-        // Usuario Google existente — verificar si tiene vault en este dispositivo
+        // Usuario existente: verificar vault en este dispositivo
         setIsNewGoogleUser(false);
         const vaultExists = await hasVault();
-
         if (!vaultExists) {
-          // Dispositivo nuevo o reinstalación — debe restaurar su seed
           navigate('/onboarding');
           return;
         }
-
+        // Tiene vault → pedir PIN para desbloquear
         const bioAvailable = await isBiometricAvailable();
         const hasCredId = !!localStorage.getItem('biometric_cred_id');
-
         if (bioAvailable && hasCredId) {
           const verified = await verifyBiometric();
-          if (!verified) {
-            throw new Error('Autenticación biométrica requerida para continuar');
-          }
-          setLoginMode('google_pin');
-        } else {
-          setLoginMode('google_pin');
+          if (!verified) throw new Error('Autenticación biométrica requerida');
+          sessionStorage.setItem('biometric_auth', 'true');
         }
+        setLoginMode('google_pin');
       }
     } catch (err: any) {
       setError(err.message || 'Error al iniciar sesión con Google');
@@ -297,14 +234,11 @@ export default function LoginPage() {
     }
 
     try {
-
-
       if (isNewGoogleUser) {
         await storeMnemonic(mnemonic, pin);
         unlockWallet(mnemonic);
         try {
           await registerBiometric(googleUid, googleEmail);
-
           const addresses = await deriveAddresses(mnemonic);
           const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/v1';
           const token = localStorage.getItem('access_token');
@@ -313,13 +247,13 @@ export default function LoginPage() {
               method: 'PATCH',
               headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
+                Authorization: `Bearer ${token}`,
               },
-              body: JSON.stringify(addresses)
-            }).catch(err => console.error('Error al guardar direcciones:', err));
+              body: JSON.stringify(addresses),
+            });
           }
         } catch (e) {
-          console.error(e);
+          console.error('Error registrando biometría o direcciones:', e);
         }
         navigate('/dashboard');
       } else {
@@ -328,17 +262,11 @@ export default function LoginPage() {
         navigate('/dashboard');
       }
     } catch (err: any) {
-      if (err.message && err.message.includes('PIN incorrecto')) {
-        setError('PIN incorrecto. Ingresa el PIN configurado en este dispositivo.');
-      } else {
-        setError(err.message || 'Error al completar el inicio de sesión');
-      }
+      setError(err.message?.includes('PIN') ? 'PIN incorrecto' : err.message || 'Error al completar el inicio de sesión');
     } finally {
       setLoading(false);
     }
   };
-
-
 
   const seedWords = mnemonic ? mnemonic.split(' ') : [];
 
@@ -346,24 +274,19 @@ export default function LoginPage() {
     <div className="bg-gray-900 rounded-2xl p-6 sm:p-8 border border-gray-800 w-full">
       <h2 className="text-xl font-semibold text-white mb-6">
         {loginMode === 'biometric' && 'Bienvenido de nuevo'}
-        {loginMode === 'google_seed' && 'Tu frase semilla'}
         {loginMode === 'biometric_pin' && 'Ingresa tu PIN'}
+        {loginMode === 'google_seed' && 'Tu frase semilla'}
         {loginMode === 'google_pin' && (isNewGoogleUser ? 'Crear PIN' : 'Desbloquear Wallet')}
         {loginMode === 'standard' && 'Iniciar sesión'}
       </h2>
 
       {error && (
-        <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-sm rounded-lg px-4 py-3 mb-4">
+        <div className="mb-4 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
           {error}
         </div>
       )}
 
-      {infoMessage && (
-        <div className="bg-blue-500/10 border border-blue-500/20 text-blue-400 text-sm rounded-lg px-4 py-3 mb-4">
-          {infoMessage}
-        </div>
-      )}
-
+      {/* Modo biométrico */}
       {loginMode === 'biometric' && (
         <div className="space-y-6 text-center">
           <p className="text-sm text-gray-400">Verifica tu huella o reconocimiento facial para ingresar.</p>
@@ -371,80 +294,53 @@ export default function LoginPage() {
             <button
               onClick={handleBiometricLogin}
               disabled={loading}
-              className="p-6 bg-blue-600/10 hover:bg-blue-600/20 text-blue-500 rounded-full border border-blue-500/30 transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50"
+              className="p-6 bg-blue-600/10 hover:bg-blue-600/20 text-blue-500 rounded-full border border-blue-500/30 transition-all disabled:opacity-50"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 2a10 10 0 0 0-10 10c0 5.523 4.477 10 10 10s10-4.477 10-10A10 10 0 0 0 12 2z" />
-                <path d="M12 6v6" />
-                <path d="M8 12h8" />
-                <path d="M12 12l3 3" />
-                <path d="M12 12l-3 3" />
+                <path d="M12 6v6M8 12h8M12 12l3 3M12 12l-3 3" />
               </svg>
             </button>
           </div>
-          <button
-            onClick={handleBiometricLogin}
-            disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-lg py-3 text-sm transition-colors"
-          >
+          <button onClick={handleBiometricLogin} disabled={loading} className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-lg py-3 text-sm">
             {loading ? 'Verificando...' : 'Autenticar con Biometría'}
           </button>
-          <div className="text-center pt-2">
-            <button
-              onClick={() => setLoginMode('standard')}
-              className="text-xs text-blue-400 hover:text-blue-300 font-medium"
-            >
-              O ingresa con correo o Google
-            </button>
-          </div>
+          <button onClick={() => setLoginMode('standard')} className="text-xs text-blue-400 hover:text-blue-300">
+            O ingresa con correo o Google
+          </button>
         </div>
       )}
 
+      {/* PIN tras biometría */}
       {loginMode === 'biometric_pin' && (
         <form onSubmit={handleBiometricPinSubmit} className="space-y-4">
-          <p className="text-sm text-gray-400">
-            Biometría verificada. Ingresa tu PIN para desbloquear tu wallet.
-          </p>
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">PIN de seguridad</label>
-            <input
-              type="password"
-              value={pin}
-              onChange={(e) => {
-                const val = e.target.value.replace(/\D/g, '');
-                if (val.length <= 6) { setPin(val); setError(''); }
-              }}
-              placeholder="••••••"
-              inputMode="numeric"
-              maxLength={6}
-              autoFocus
-              required
-              className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500 tracking-widest text-center font-mono"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={loading || pin.length !== 6}
-            className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-lg py-3 text-sm transition-colors"
-          >
+          <p className="text-sm text-gray-400">Biometría verificada. Ingresa tu PIN para desbloquear tu wallet.</p>
+          <input
+            type="password"
+            value={pin}
+            onChange={(e) => { const v = e.target.value.replace(/\D/g, ''); if (v.length <= 6) { setPin(v); setError(''); } }}
+            placeholder="••••••"
+            inputMode="numeric"
+            maxLength={6}
+            autoFocus
+            required
+            className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500 tracking-widest text-center font-mono"
+          />
+          <button type="submit" disabled={loading || pin.length !== 6} className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-lg py-3 text-sm">
             {loading ? 'Desbloqueando...' : 'Desbloquear'}
           </button>
           <div className="text-center">
-            <button
-              type="button"
-              onClick={() => { setLoginMode('standard'); setPin(''); setError(''); }}
-              className="text-xs text-blue-400 hover:text-blue-300"
-            >
+            <button type="button" onClick={() => { setLoginMode('standard'); setPin(''); setError(''); }} className="text-xs text-blue-400 hover:text-blue-300">
               Usar email y contraseña
             </button>
           </div>
         </form>
       )}
 
+      {/* Seed phrase para Google nuevo */}
       {loginMode === 'google_seed' && (
         <div className="space-y-6">
           <p className="text-gray-400 text-sm">Anota estas 12 palabras en orden. No la compartas con nadie.</p>
-
           <div className="bg-gray-800 rounded-xl p-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
             {seedWords.map((word, i) => (
               <div key={i} className="bg-gray-700 rounded-lg px-3 py-2 text-sm text-white flex gap-2">
@@ -453,111 +349,62 @@ export default function LoginPage() {
               </div>
             ))}
           </div>
-
           <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg px-4 py-3">
             <p className="text-yellow-400 text-xs">⚠️ Guarda esta frase en un lugar seguro. Si la pierdes, no podrás recuperar tu wallet.</p>
           </div>
-
           <label className="flex items-start gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={confirmed}
-              onChange={(e) => {
-                setConfirmed(e.target.checked);
-                setError('');
-              }}
-              className="mt-0.5 accent-blue-500"
-            />
+            <input type="checkbox" checked={confirmed} onChange={(e) => { setConfirmed(e.target.checked); setError(''); }} className="mt-0.5 accent-blue-500" />
             <span className="text-gray-400 text-sm">He anotado mi frase semilla en un lugar seguro</span>
           </label>
-
-          <button
-            onClick={handleGoogleSeedConfirm}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg py-3 text-sm transition-colors"
-          >
+          <button onClick={handleGoogleSeedConfirm} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg py-3 text-sm">
             Continuar
           </button>
         </div>
       )}
 
+      {/* PIN para Google */}
       {loginMode === 'google_pin' && (
         <form onSubmit={handleGooglePinSubmit} className="space-y-4">
-          <p className="text-sm text-gray-400 mb-2">
-
-            {isNewGoogleUser
-              ? 'Crea un PIN de seguridad de 6 dígitos para proteger tu wallet.'
-              : 'Ingresa tu PIN de seguridad para desbloquear tu wallet.'}
+          <p className="text-sm text-gray-400">
+            {isNewGoogleUser ? 'Crea un PIN de 6 dígitos para proteger tu wallet.' : 'Ingresa tu PIN para desbloquear tu wallet.'}
           </p>
-
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">
-              {isNewGoogleUser ? 'Crea tu PIN (6 dígitos)' : 'PIN de seguridad'}
-            </label>
+          <input
+            type="password"
+            value={pin}
+            onChange={(e) => { const v = e.target.value.replace(/\D/g, ''); if (v.length <= 6) setPin(v); }}
+            placeholder="••••••"
+            inputMode="numeric"
+            maxLength={6}
+            required
+            className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500 tracking-widest text-center font-mono"
+          />
+          {isNewGoogleUser && (
             <input
               type="password"
-              value={pin}
-              onChange={(e) => {
-                const val = e.target.value.replace(/\D/g, '');
-                if (val.length <= 6) setPin(val);
-              }}
-              placeholder="••••••"
+              value={confirmPin}
+              onChange={(e) => { const v = e.target.value.replace(/\D/g, ''); if (v.length <= 6) setConfirmPin(v); }}
+              placeholder="Confirmar PIN"
               inputMode="numeric"
               maxLength={6}
               required
-              className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500 tracking-widest text-center font-mono"
+              className={`w-full bg-gray-800 border text-white rounded-lg px-4 py-3 text-sm focus:outline-none tracking-widest text-center font-mono ${confirmPin.length === 6 && confirmPin !== pin ? 'border-red-500' : 'border-gray-700 focus:border-blue-500'}`}
             />
-          </div>
-
-          {isNewGoogleUser && (
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Confirmar PIN</label>
-              <input
-                type="password"
-                value={confirmPin}
-                onChange={(e) => {
-                  const val = e.target.value.replace(/\D/g, '');
-                  if (val.length <= 6) setConfirmPin(val);
-                }}
-                placeholder="••••••"
-                inputMode="numeric"
-                maxLength={6}
-                required
-                className={`w-full bg-gray-800 border text-white rounded-lg px-4 py-3 text-sm focus:outline-none tracking-widest text-center font-mono ${confirmPin.length === 6 && confirmPin !== pin
-                  ? 'border-red-500 focus:border-red-500'
-                  : 'border-gray-700 focus:border-blue-500'
-                  }`}
-              />
-              {confirmPin.length === 6 && confirmPin !== pin && (
-                <p className="text-xs text-red-400 mt-1">Los PINs no coinciden</p>
-              )}
-            </div>
           )}
-
+          {isNewGoogleUser && confirmPin.length === 6 && confirmPin !== pin && (
+            <p className="text-xs text-red-400">Los PINs no coinciden</p>
+          )}
           <div className="flex gap-3">
-            <button
-              type="button"
-              onClick={() => {
-                setLoginMode('standard');
-                setPin('');
-                setConfirmPin('');
-              }}
-              className="flex-1 bg-gray-800 hover:bg-gray-700 text-white font-medium rounded-lg py-3 text-sm transition-colors"
-            >
+            <button type="button" onClick={() => { setLoginMode('standard'); setPin(''); setConfirmPin(''); }} className="flex-1 bg-gray-800 hover:bg-gray-700 text-white font-medium rounded-lg py-3 text-sm">
               Cancelar
             </button>
-            <button
-              type="submit"
-              disabled={loading || pin.length !== 6 || (isNewGoogleUser && confirmPin !== pin)}
-              className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-lg py-3 text-sm transition-colors"
-            >
+            <button type="submit" disabled={loading || pin.length !== 6 || (isNewGoogleUser && confirmPin !== pin)} className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-lg py-3 text-sm">
               {loading ? 'Confirmando...' : 'Confirmar'}
             </button>
           </div>
         </form>
       )}
 
-
-
+      {/* Login estándar */}
       {loginMode === 'standard' && (
         <>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -572,7 +419,6 @@ export default function LoginPage() {
                 className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500"
               />
             </div>
-
             <div>
               <label className="block text-sm text-gray-400 mb-1">Contraseña</label>
               <input
@@ -584,45 +430,18 @@ export default function LoginPage() {
                 className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500"
               />
             </div>
-
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">PIN de seguridad (6 dígitos)</label>
-              <input
-                type="password"
-                value={pin}
-                onChange={(e) => {
-                  const val = e.target.value.replace(/\D/g, '');
-                  if (val.length <= 6) setPin(val);
-                }}
-                placeholder="••••••"
-                inputMode="numeric"
-                maxLength={6}
-                required
-                className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500 tracking-widest"
-              />
-              <p className="text-xs text-gray-500 mt-1">Solo números, exactamente 6 dígitos</p>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading || pin.length !== 6}
-              className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-lg py-3 text-sm transition-colors"
-            >
+            <button type="submit" disabled={loading} className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-lg py-3 text-sm">
               {loading ? 'Iniciando sesión...' : 'Iniciar sesión'}
             </button>
           </form>
 
-          <div className="flex items-center gap-3 my-5">
-            <div className="flex-1 h-px bg-gray-700" />
-            <span className="text-gray-500 text-sm">O continúa con</span>
-            <div className="flex-1 h-px bg-gray-700" />
+          <div className="my-5 flex items-center gap-3">
+            <div className="h-px flex-1 bg-gray-700" />
+            <span className="text-sm text-gray-500">O continúa con</span>
+            <div className="h-px flex-1 bg-gray-700" />
           </div>
 
-          <button
-            onClick={handleGoogle}
-            disabled={loading}
-            className="w-full flex items-center justify-center gap-3 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white font-medium rounded-lg py-3 text-sm transition-colors disabled:opacity-50"
-          >
+          <button onClick={handleGoogle} disabled={loading} className="w-full flex items-center justify-center gap-3 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white font-medium rounded-lg py-3 text-sm disabled:opacity-50">
             <svg width="18" height="18" viewBox="0 0 48 48">
               <path fill="#FFC107" d="M43.6 20H24v8h11.3C33.6 33.1 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 7.9 3l5.7-5.7C34.1 6.5 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20c11 0 19.7-8 19.7-20 0-1.3-.1-2.7-.1-4z" />
               <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 15.1 18.9 12 24 12c3.1 0 5.8 1.1 7.9 3l5.7-5.7C34.1 6.5 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z" />
@@ -632,11 +451,9 @@ export default function LoginPage() {
             Continuar con Google
           </button>
 
-          <p className="text-center text-gray-400 text-sm mt-6">
+          <p className="mt-6 text-center text-sm text-gray-400">
             ¿No tienes cuenta?{' '}
-            <Link href="/register" className="text-blue-400 hover:text-blue-300">
-              Regístrate
-            </Link>
+            <Link href="/register" className="text-blue-400 hover:text-blue-300">Regístrate</Link>
           </p>
         </>
       )}

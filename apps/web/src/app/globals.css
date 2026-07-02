@@ -6,22 +6,42 @@
 
 @layer base {
     :root {
-        --surface: #0f172a;
-        --surface-card: #1e293b;
-        --surface-border: #334155;
-        --accent: #6366f1;
-        --accent-hover: #4f46e5;
-        --text-primary: #f1f5f9;
+        --surface: #0b1120;
+        --surface-card: #0f172a;
+        --surface-border: #1e293b;
+        --accent: #7c3aed;
+        --accent-hover: #6d28d9;
+        --text-primary: #e2e8f0;
         --text-secondary: #94a3b8;
         --success: #22c55e;
         --danger: #ef4444;
     }
 
-    body {
-        @apply bg-surface text-slate-100 font-sans antialiased;
+    * {
+        @apply box-border;
     }
 
-    * {
-        @apply border-surface-border;
+    body {
+        @apply bg-slate-950 text-slate-100 font-sans antialiased;
+        background:
+            radial-gradient(circle at top, rgba(76, 29, 149, 0.18), transparent 20%),
+            linear-gradient(180deg, #020617 0%, #0b1120 100%);
+    }
+
+    ::selection {
+        @apply bg-violet-500/40;
+    }
+
+    ::-webkit-scrollbar {
+        width: 10px;
+    }
+
+    ::-webkit-scrollbar-track {
+        background: #0f172a;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        background: #334155;
+        border-radius: 999px;
     }
 }

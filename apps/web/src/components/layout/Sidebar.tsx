@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { signOut } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
-import { useWallet } from '@/contexts/WalletContext';
 
 const NAV_ITEMS = [
     {
@@ -59,10 +58,9 @@ const NAV_ITEMS = [
 export default function Sidebar() {
     const pathname = usePathname();
     const router = useRouter();
-    const { lockWallet } = useWallet();
 
     return (
-        <aside className="fixed left-0 top-0 h-screen w-60 border-r border-surface-border flex flex-col z-40 bg-slate-900" >
+        <aside className="fixed left-0 top-0 h-screen w-60 border-r border-surface-border flex flex-col z-40 bg-slate-900">
             {/* Logo */}
             <div className="px-4 pt-8 pb-4 border-b border-surface-border flex flex-col items-center">
                 <img src="/logo.svg" alt="NexS Wallet" className="w-24 h-24 object-contain" />
@@ -100,8 +98,9 @@ export default function Sidebar() {
                         } finally {
                             localStorage.removeItem('access_token');
                             localStorage.removeItem('refresh_token');
+                            localStorage.removeItem('uid');
+                            sessionStorage.removeItem('user_pin');
                             sessionStorage.removeItem('biometric_auth');
-                            if (lockWallet) lockWallet();
                             router.push('/login');
                         }
                     }}
@@ -116,6 +115,6 @@ export default function Sidebar() {
                 </button>
                 <p className="text-xs text-slate-500 font-mono px-3">NexS Wallet v0.1</p>
             </div>
-        </aside >
+        </aside>
     );
 }

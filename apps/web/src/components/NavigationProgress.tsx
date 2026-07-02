@@ -11,8 +11,10 @@ export default function NavigationProgress() {
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     useEffect(() => {
-        // Cada vez que cambia el pathname, la navegación completó
-        // Completar la barra y ocultarla
+        // Cada vez que cambia el pathname, la navegación completó.
+        // Si la barra no estaba visible (navegación por Link), mostrarla brevemente.
+        if (intervalRef.current) clearInterval(intervalRef.current);
+        setVisible(true);
         setProgress(100);
         timerRef.current = setTimeout(() => {
             setVisible(false);

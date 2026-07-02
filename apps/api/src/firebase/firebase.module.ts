@@ -1,6 +1,12 @@
 import { Module, Global } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { initializeApp, getApps, cert, App } from 'firebase-admin/app';
+import {
+  initializeApp,
+  getApps,
+  cert,
+  applicationDefault,
+  App,
+} from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 
@@ -17,12 +23,32 @@ export const FIREBASE_DB = 'FIREBASE_DB';
       inject: [ConfigService],
       useFactory: (config: ConfigService): App => {
         if (getApps().length > 0) return getApps()[0];
+
+        const projectId = config.get<string>('FIREBASE_PROJECT_ID');
+        const clientEmail = config.get<string>('FIREBASE_CLIENT_EMAIL');
+        const privateKey = config.get<string>('FIREBASE_PRIVATE_KEY')?.replace(/\\n/g, '\n');
+
+        const hasServiceAccountCredentials = Boolean(
+          projectId &&
+            clientEmail &&
+            privateKey &&
+            privateKey.includes('BEGIN PRIVATE KEY') &&
+            clientEmail.includes('@')
+        );
+
+        if (hasServiceAccountCredentials) {
+          return initializeApp({
+            credential: cert({
+              projectId,
+              clientEmail,
+              privateKey,
+            }),
+          });
+        }
+
         return initializeApp({
-          credential: cert({
-            projectId: config.get<string>('FIREBASE_PROJECT_ID'),
-            clientEmail: config.get<string>('FIREBASE_CLIENT_EMAIL'),
-            privateKey: config.get<string>('FIREBASE_PRIVATE_KEY')?.replace(/\\n/g, '\n'),
-          }),
+          credential: applicationDefault(),
+          projectId: projectId || undefined,
         });
       },
     },

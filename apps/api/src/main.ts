@@ -20,8 +20,6 @@ async function bootstrap() {
     },
   }));
 
-  app.setGlobalPrefix('v1');
-
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,          
@@ -36,10 +34,10 @@ async function bootstrap() {
     credentials: true,
   });
 
-  //El body de las request de los webhooks seran Buffer raw
+  // El body de las request de los webhooks sera Buffer raw
   app.use('/v1/webhooks', express.raw({ type: 'application/json' }));
   app.setGlobalPrefix('v1');
-  const port = process.env['PORT'] ?? 3001;
+  const port = process.env['PORT'] ?? 3005;
   await app.listen(port);
   Logger.log(`API corriendo en http://localhost:${port}/v1`, 'Bootstrap');
 }
